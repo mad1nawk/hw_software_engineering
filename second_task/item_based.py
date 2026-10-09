@@ -8,19 +8,18 @@ tracks_df = pd.read_csv('unique_tracks.txt', sep='<SEP>', header=None, names=['t
 df = pd.merge(plays_df, tracks_df, on='song_id', how='left')
 
 
+# item based (it finds songs that are liked by the same users as the songs in the current user’s history)
 def item_based_collaborative_filtering(user_id, df, top_n=2):
     user_history = df[df['user_id'] == user_id]
     if user_history.empty:
-        return "Недостаточно данных для коллаборативной фильтрации."
+        return "There is not enough data for collaborative filtering"
 
     user_item_matrix = df.pivot_table(index='user_id', columns='song_id', values='play_count', fill_value=0)
-
     item_similarity = cosine_similarity(user_item_matrix.T)
     similarity_df = pd.DataFrame(item_similarity, index=user_item_matrix.columns, columns=user_item_matrix.columns)
 
     user_songs = user_history['song_id'].unique()
     candidate_songs = [s for s in similarity_df.columns if s not in user_songs]
-
     recommendations = []
     for song in candidate_songs:
         score = sum(similarity_df[song][user_song] for user_song in user_songs)
@@ -32,23 +31,9 @@ def item_based_collaborative_filtering(user_id, df, top_n=2):
     result = df[df['song_id'].isin(top_songs)][['song_id', 'title', 'artist_name']]
     return result.drop_duplicates().to_string(index=False)
 
-def content_based_filtering(target_song_id, df, top_n=2):
-    df['content_features'] = df['artist_name'] + " " + df['genre']
-    
-    vectorizer = TfidfVectorizer(stop_words='english')
-    tfidf_matrix = vectorizer.fit_transform(df['content_features'])
-    
-    cosine_sim = cosine_similarity(tfidf_matrix)
-    
-    if target_song_id not in df['song_id'].values:
-        return "Целевая песня не найдена в датасете."
-        
-    idx = df[df['song_id'] == target_song_id].index[0]
-    
-    sim_scores = list(enumerate(cosine_sim[idx]))
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
-    
-    top_indices = [i[0] for i in sim_scores[1:top_n+1]]
-    
-    result = df.iloc[top_indices][['song_id', 'title', 'artist_name', 'genre']]
-    return result.to_string(index=False)
+
+# content based (genre coincidence)
+def get_content_recommendations(df, target_song_id, top_n=3):
+    target_genre = df[df['song_id'] == target_song_id]['genre'].values[0]
+    similar_songs = df[(df['genre'] == target_genre) & (df['song_id'] != target_song_id)]
+    return similar_songs.head(top_n)
